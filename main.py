@@ -7,7 +7,7 @@ import uvicorn
 from utils import text_cleaning, text_lemamtizing, text_vectorizing, predict_new
 
 # Intialzie the app
-app = FastAPI(debug=True)
+app = FastAPI(title='Twitter Sentiment analysis')
 
 # Dictionary for mapping the label to text
 map_label = {
@@ -22,9 +22,9 @@ class DataInput(BaseModel):
 
 @app.get('/')
 async def home():
-    return 'Hello I am youssef kamel'
+    return {'Hello I am youssef kamel'}
 
-@app.get('/predict')
+@app.post('/predict')
 async def tweet_clf(data: DataInput):
     
     # Cleaning
@@ -43,6 +43,3 @@ async def tweet_clf(data: DataInput):
     final_pred = map_label.get(y_pred)
 
     return {f'Prediction is: {final_pred}'}
-
-if __name__ == '__main__':
-    uvicorn.run(app, host='127.0.0.1', port=8000)

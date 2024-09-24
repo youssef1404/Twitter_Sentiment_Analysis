@@ -3,14 +3,20 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import joblib
 from typing import List, Literal
+from gensim.models import Word2Vec, FastText
+import numpy as np
+from nltk import word_tokenize
 
 # Vectorizer 
 bow_vectorizer = joblib.load(os.path.join(os.getcwd(), 'artifacts', 'bow_vectorizer.pkl'))
 tfidf_vectorizer = joblib.load(os.path.join(os.getcwd(), 'artifacts', 'tfidf_vectorizer.pkl'))
+w2v_vectorizer = Word2Vec.load(os.path.join(os.getcwd(), 'artifacts', 'word2vec_model.model')) 
 
 # Model
 bow_svc_model = joblib.load(os.path.join(os.getcwd(), 'artifacts', 'svm-bow.pkl'))
 tfidf_svc_model = joblib.load(os.path.join(os.getcwd(), 'artifacts', 'svm-tfidf.pkl'))
+w2v_svc_model = joblib.load(os.path.join(os.getcwd(), 'artifacts', 'svm-w2v.pkl'))
+
 
 ## Remove unwanted text patterns from the tweets
 def remove_pattern(input_txt: str, pattern: str):
@@ -23,7 +29,6 @@ def remove_pattern(input_txt: str, pattern: str):
     '''
     input_txt = re.sub(pattern, '', input_txt)
     return input_txt
-
 
 
 ## A Function to remove excessive repeated chars while preserving correct words
@@ -135,10 +140,10 @@ def text_cleaning(text: str) -> str:
     text = ' '.join([w for w in text.split() if len(w)>3])
 
     # Remove the numbers from words 
-    text = remove_pattern(text=text, pattern=r'(?<=\w)\d+|\d+(?=\w)')
+    text = remove_pattern(input_txt=text, pattern=r'(?<=\w)\d+|\d+(?=\w)')
 
     # Remove special characters
-    text = remove_pattern(text=text, pattern=r'[!@#$%^&*()_+{}\[\]:;<>,.?~\\|\/]')
+    text = remove_pattern(input_txt=text, pattern=r'[!@#$%^&*()_+{}\[\]:;<>,.?~\\|\/]')
 
     # remove redundant words 
     cleaned_text = remove_redundant_words_extra_spaces(text=text)
@@ -165,15 +170,44 @@ def text_lemamtizing(text: str) -> str:
 
     return lemmatized_text
 
+def preprocess_text(doc: str):
+    """ Function for tokenizing for Word2Vec Model"""
+    
+    # Tokenizing
+    tokens = word_tokenize(doc)
+    # Remove not-alphabetic
+    tokens = [word for word in tokens if word.isalpha()]
+    # Remove stop words
+    tokens = [word for word in tokens if word not in stopwords.words('english')]
+
+    return tokens
 
 
-def text_vectorizing(text: str, method):
+def doc_to_w2v(doc):
+    """Transform the text data to Word2Vec embeddings"""
+
+    # Call the preprocessing function
+    tokens = preprocess_text(doc=doc)
+
+    # Get the embeddings
+    embeddings = [w2v_vectorizer.wv[word] for word in tokens if word in w2v_vectorizer.wv]
+
+    # Get the document overall embeddings
+    if embeddings:
+        return np.mean(embeddings, axis=0)
+    else:
+        return np.zeros(w2v_vectorizer.vector_size)
+    
+
+def text_vectorizing(text: str, method:str):
     """ This function will be passed to main.py for text vectorizing
     """
-
     # Apply Vectorizing
-    if method == 'BOW':
+    if method.lower() == 'bow':
         X_processed = bow_vectorizer.transform([text]).toarray()
+
+    elif method.lower() == 'w2v':
+        X_processed = doc_to_w2v(doc=text).toarray()
 
     else:
         X_processed = tfidf_vectorizer.transform([text]).toarray()
@@ -181,15 +215,16 @@ def text_vectorizing(text: str, method):
     return X_processed
 
 
-
-def predict_new(X_new, method):
+def predict_new(X_new, method:str):
     """ This function will be passed to main.py for predicting class
     """
+    if method.lower() == 'bow':
+        y_pred = bow_svc_model.predict(X_new)[0]
 
-    if method == 'BOW':
-        y_pred = bow_svc_model.predict([X_new])[0]
+    elif method.lower() == 'w2v':
+        y_pred = w2v_svc_model.predict(X_new)[0]
 
     else:
-        y_pred = tfidf_svc_model.predict([X_new])[0]
+        y_pred = tfidf_svc_model.predict(X_new)[0]
 
     return y_pred
